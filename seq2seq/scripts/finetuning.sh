@@ -1,5 +1,5 @@
 #!/bin/bash
-# This scripts trains adapters method.
+# This scripts trains bitfit method.
 # Copyright 2020 Google and DeepMind.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,27 +31,20 @@ MODEL=$4
 BS_=$5
 GA=$6
 BS=$((BS_*GA))
-D=$7
-N=$8
-GC=true
+N=$7
+GC=false
 if [ $N > 0.0 ]; then
-    OUT_DIR=outputs/ffnadapters${D}_${TASK}noise${N}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
+    OUT_DIR=outputs/ft_${TASK}noise${N}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
 else
-    OUT_DIR=outputs/ffnadapters${D}_${TASK}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
+    OUT_DIR=outputs/ft_${TASK}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
 fi
 mkdir -p $OUT_DIR
 cat configs/bitfit.json > $OUT_DIR/settings.json
-echo '"add_layer_norm_before_adapter": false,
-"add_layer_norm_after_adapter": false,
-"adapter_config_name": "adapter",
-"train_task_adapters": true,
-"adapter_size": '${D}',
-"unfreeze_lm_head": false,
-"unfreeze_layer_norms": true,
-"output_dir": "'${OUT_DIR}'",
+echo '"output_dir": "'${OUT_DIR}'",
 "max_source_length": 128,
 "noise_frac": "'${N}'",
 "overwrite_cache": true,
+"optim": "adafactor",
 "task_name": "'${TASK}'",
 "eval_dataset_name": "'${TASK}'",
 "test_dataset_name": "'${TASK}'",
@@ -62,7 +55,7 @@ echo '"add_layer_norm_before_adapter": false,
 "per_device_train_batch_size": '${BS_}',
 "per_device_eval_batch_size": '${BS_}',
 "fp16": false,
-"add_adapter_in_self_attention": false,
+"gradient_checkpointing": '${GC}',
 "gradient_accumulation_steps": '${GA}'
 }' >> $OUT_DIR/settings.json
 python run_seq2seq.py $OUT_DIR/settings.json &> $OUT_DIR/log.txt

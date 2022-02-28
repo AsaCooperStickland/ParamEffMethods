@@ -14,6 +14,7 @@ class AdapterConfig(object):
     add_layer_norm_before_adapter: bool = False
     add_layer_norm_after_adapter: bool = True
     non_linearity: str = "swish"
+    adapter_size: int = 16
     task_reduction_factor: int = 16
     add_adapter_in_feed_forward = True
     add_adapter_in_self_attention = True
@@ -26,26 +27,33 @@ class AdapterConfig(object):
     # This can be either random, or fastfood.
     intrinsic_projection = "random"
 
-    # Hypercomplex adapters parameters 
+    # Hypercomplex adapters parameters
     hypercomplex_adapters = False
     hypercomplex_division = 8
     learn_phm = True
     hypercomplex_nonlinearity="glorot-uniform"
-    shared_phm_rule = False 
-    factorized_phm = False 
+    shared_phm_rule = False
+    factorized_phm = False
     shared_W_phm = False
-    factorized_phm_rule = False 
+    factorized_phm_rule = False
     phm_c_init = "normal"
     phm_rank = 1
     phm_init_range=0.01
 
     # prefix-tuning parameters.
     prefix_dim = 100
-    init_prefix_from_vocab = False 
-    kronecker_prod = False  
+    init_prefix_from_vocab = False
+    kronecker_prod = False
 
     # BitFit configuration.
     bitfit = False
+
+    # Distributor configuration
+    train_distributor = False
+    use_add = False
+    use_mult = False
+    layer_list: str = "b4_wo_ffn"
+    condition_hooks = False
 
     # Low-rank adapters.
     low_rank_adapters = False

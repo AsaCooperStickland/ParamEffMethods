@@ -1,5 +1,5 @@
 """Install Compacter."""
-import os 
+import os
 import setuptools
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
@@ -29,25 +29,25 @@ def setup_package():
           'Programming Language :: Python :: 3.7.10',
       ],
       keywords='text nlp machinelearning',
-      ext_modules=[
-        CUDAExtension('seq2seq.projections.fwh_cuda',
-            sources=[
-            'seq2seq/projections/fwh_cuda/fwh_cpp.cpp',
-            'seq2seq/projections/fwh_cuda/fwh_cu.cu',
-            ]
-        )
-      ],
-      cmdclass={"build_ext": BuildExtension},
       install_requires=[
-        'datasets==1.6.2',
+        'datasets==1.18.2',
         'scikit-learn==0.24.2',
         'tensorboard==2.5.0',
         'matplotlib==3.4.2',
-        'torch==1.8.0+cu111',
-        'transformers==4.6.0'
+        'torch==1.10.1+cu113',
+        'transformers==4.16.2'
       ],
   )
 
 
 if __name__ == '__main__':
   setup_package()
+  '''ext_modules=[
+    CUDAExtension('seq2seq.projections.fwh_cuda',
+        sources=[
+        'seq2seq/projections/fwh_cuda/fwh_cpp.cpp',
+        'seq2seq/projections/fwh_cuda/fwh_cu.cu',
+        ]
+    )
+  ],
+  cmdclass={"build_ext": BuildExtension},'''

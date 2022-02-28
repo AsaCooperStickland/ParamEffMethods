@@ -1,5 +1,5 @@
 #!/bin/bash
-# This scripts trains full finetuning method.
+# This scripts trains bitfit method.
 # Copyright 2020 Google and DeepMind.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,5 @@
 #SBATCH --time=48:00:00
 
 source ~/newconda/bin/activate survey
-# For smaller datasets of GLUE (mrpc, cola, and stsb), we set the `num_train_epochs` to 20,
-# for other larger datasets in GLUE we used `num_train_epochs` of 3.
-python run_seq2seq.py  configs/baseline.json #--model_name_or_path t5-large
+python run_seq2seq.py configs/lhuc_after.json # &> outputs/lhuc_after/log.txt
+python run_seq2seq.py configs/lhuc_b4.json # &> outputs/lhuc_after/log.txt

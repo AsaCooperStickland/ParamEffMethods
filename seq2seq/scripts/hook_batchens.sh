@@ -1,5 +1,5 @@
 #!/bin/bash
-# This scripts trains adapters method.
+# This scripts trains bitfit method.
 # Copyright 2020 Google and DeepMind.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,27 +31,17 @@ MODEL=$4
 BS_=$5
 GA=$6
 BS=$((BS_*GA))
-D=$7
-N=$8
 GC=true
-if [ $N > 0.0 ]; then
-    OUT_DIR=outputs/ffnadapters${D}_${TASK}noise${N}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
-else
-    OUT_DIR=outputs/ffnadapters${D}_${TASK}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
-fi
+OUT_DIR=outputs/batchens-qowi_${TASK}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
 mkdir -p $OUT_DIR
 cat configs/bitfit.json > $OUT_DIR/settings.json
-echo '"add_layer_norm_before_adapter": false,
-"add_layer_norm_after_adapter": false,
-"adapter_config_name": "adapter",
-"train_task_adapters": true,
-"adapter_size": '${D}',
-"unfreeze_lm_head": false,
-"unfreeze_layer_norms": true,
+echo '"freeze_bitfit_lm_head": true,
+"train_distributor": true,
+"use_mult": true,
+"layer_list": "layer_norm,b4_q_self_attn,b4_q_cross_attn,b4_o_self_attn,b4_o_cross_attn,b4_wi_ffn,after_q_self_attn,after_q_cross_attn,after_o_self_attn,after_o_cross_attn,after_wi_ffn",
+"freeze_bitfit_lm_head": true,
 "output_dir": "'${OUT_DIR}'",
 "max_source_length": 128,
-"noise_frac": "'${N}'",
-"overwrite_cache": true,
 "task_name": "'${TASK}'",
 "eval_dataset_name": "'${TASK}'",
 "test_dataset_name": "'${TASK}'",
@@ -62,7 +52,6 @@ echo '"add_layer_norm_before_adapter": false,
 "per_device_train_batch_size": '${BS_}',
 "per_device_eval_batch_size": '${BS_}',
 "fp16": false,
-"add_adapter_in_self_attention": false,
 "gradient_accumulation_steps": '${GA}'
 }' >> $OUT_DIR/settings.json
 python run_seq2seq.py $OUT_DIR/settings.json &> $OUT_DIR/log.txt

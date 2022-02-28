@@ -7,6 +7,8 @@
 "model_name_or_path": "t5-base",
 "tokenizer_name": "t5-base",
 "save_total_limit": 1,
+"per_device_train_batch_size": 100,
+"per_device_eval_batch_size": 100,
 "load_best_model_at_end": true,
 "metric_for_best_model": "average_metrics",
 "greater_is_better": true,
@@ -15,9 +17,7 @@
 "non_linearity": "gelu_new",
 "max_source_length": 128,
 "learning_rate": 3e-4,
-"output_dir": "outputs/full_finetuning",
-"per_device_train_batch_size": 100,
-"per_device_eval_batch_size": 100,
+"output_dir": "outputs/lhuc_b4",
 "split_validation_test": true,
 "task_name": "mrpc",
 "eval_dataset_name": "mrpc", 
@@ -26,6 +26,11 @@
 "dataset_config_name": ["en"],
 "eval_dataset_config_name": ["en"],
 "test_dataset_config_name": ["en"],
-"predict_with_generate": true
+"predict_with_generate": true,
+"train_distributor": true,
+"use_mult": true,
+"layer_list": "b4_q_self_attn,b4_q_cross_attn,b4_o_self_attn,b4_o_cross_attn,b4_wi_ffn,b4_wo_ffn",
+"unfreeze_lm_head": false,
+"freeze_bitfit_lm_head": true,
+"overwrite_output_dir": true
 }
-

@@ -20,6 +20,8 @@ class AdapterTrainingArguments:
         "adapter layers."})
     task_reduction_factor: Optional[int] = field(default=16, metadata={"help": "defines the default reduction factor for "
         "adapter layers."})
+    adapter_size: Optional[int] = field(default=16, metadata={"help": "defines the default bottleneck size for "
+        "adapter layers."})
     non_linearity: Optional[str] = field(default="swish", metadata={"help": "Defines nonlinearity for adapter layers."})
     unfreeze_lm_head: bool = field(default=False, metadata={"help": "If set unfreeze the last linear layer."})
     unfreeze_layer_norms: bool = field(default=False, metadata={"help": "If set, unfreezes the layer norms."})
@@ -75,3 +77,9 @@ class AdapterTrainingArguments:
     low_rank_adapters: Optional[bool] = field(default=False, metadata={"help": "If set, uses the low-rank adapters."})
     low_rank_w_init: Optional[str] = field(default="glorot-uniform", metadata={"help": "Defines the initialization for low-rank adapters."})
     low_rank_rank: Optional[int] = field(default=1, metadata={"help": "Defines the rank of low-rank adapters."})
+    # Distributor
+    train_distributor: Optional[bool] = field(default=False, metadata={"help": "If set, freezes the classifier in bitfit."})
+    use_add: Optional[bool] = field(default=False, metadata={"help": "If set, freezes the classifier in bitfit."})
+    use_mult: Optional[bool] = field(default=False, metadata={"help": "If set, freezes the classifier in bitfit."})
+    condition_hooks: Optional[bool] = field(default=False, metadata={"help": "If set, freezes the classifier in bitfit."})
+    layer_list: Optional[str] = field(default="after_wi_ffn", metadata={"help": "If set, freezes the classifier in bitfit."})

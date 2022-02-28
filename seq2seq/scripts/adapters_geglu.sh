@@ -35,9 +35,9 @@ D=$7
 N=$8
 GC=true
 if [ $N > 0.0 ]; then
-    OUT_DIR=outputs/ffnadapters${D}_${TASK}noise${N}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
+    OUT_DIR=outputs/ffngegluadapters${D}_${TASK}noise${N}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
 else
-    OUT_DIR=outputs/ffnadapters${D}_${TASK}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
+    OUT_DIR=outputs/ffngegluadapters${D}_${TASK}_${MODEL}_eps${EP}_lr${LR}_bs${BS}
 fi
 mkdir -p $OUT_DIR
 cat configs/bitfit.json > $OUT_DIR/settings.json
@@ -46,13 +46,14 @@ echo '"add_layer_norm_before_adapter": false,
 "adapter_config_name": "adapter",
 "train_task_adapters": true,
 "adapter_size": '${D}',
+"non_linearity": "geglu",
 "unfreeze_lm_head": false,
 "unfreeze_layer_norms": true,
 "output_dir": "'${OUT_DIR}'",
 "max_source_length": 128,
+"task_name": "'${TASK}'",
 "noise_frac": "'${N}'",
 "overwrite_cache": true,
-"task_name": "'${TASK}'",
 "eval_dataset_name": "'${TASK}'",
 "test_dataset_name": "'${TASK}'",
 "num_train_epochs": '${EP}',

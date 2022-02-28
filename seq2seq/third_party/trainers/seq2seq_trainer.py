@@ -4,8 +4,8 @@ from torch import nn
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from torch.utils.data.dataset import Dataset
-from transformers import Seq2SeqTrainer 
-from .trainer import BaseTrainer 
+from transformers import Seq2SeqTrainer
+from .trainer import BaseTrainer
 
 if version.parse(torch.__version__) >= version.parse("1.6"):
     from torch.cuda.amp import autocast
@@ -71,7 +71,7 @@ class Seq2SeqTrainer(Seq2SeqTrainer, BaseTrainer):
         }
         generated_tokens = self.model.generate(
             inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
+            #attention_mask=inputs["attention_mask"],
             **gen_kwargs,
         )
         # in case the batch is shorter than max length, the output should be padded

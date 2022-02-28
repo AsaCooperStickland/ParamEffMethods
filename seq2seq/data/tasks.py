@@ -1,7 +1,8 @@
 from collections import OrderedDict
-import collections 
+import collections
 import abc
 import functools
+import random
 from typing import Callable, List, Mapping
 from utils import pad_punctuation
 from seq2seq.metrics import metrics
@@ -30,9 +31,13 @@ class AbstractTask(abc.ABC):
                                          "superglue-boolq"]
     large_data_without_all_splits = ["qqp", "qnli", "superglue-record", "sst2"]
 
-    def __init__(self, config, seed=42):
+    def __init__(self, config, seed=42, noise_frac=0.0):
         self.config = config
         self.seed = seed
+        print(noise_frac)
+        self.noise_frac = float(noise_frac)
+        if self.noise_frac > 0.0:
+            assert self.labels_list is not None
 
     def get_max_target_length(self, tokenizer, default_max_length):
         if self.labels_list is not None:
@@ -42,10 +47,21 @@ class AbstractTask(abc.ABC):
     def seq2seq_format(self, sources: List[str],
                        targets: List[str],
                        add_prefix: bool=False,
+                       split="train",
                        prefix: str=None,
-                       extra_fields={}):
+                       extra_fields={'n/a': 'n/a'}):
         src_prefix = self.name if prefix is None else prefix
         sources = [src_prefix]+sources if add_prefix else sources
+        if self.noise_frac > 0.0 and split == "train":
+            noisy_targets = []
+            for tgt in targets:
+                if random.uniform(0, 1) < self.noise_frac:
+                    labels = [l for l in self.labels_list if l != tgt]
+                    noisy_targets.append(random.choice(labels))
+                else:
+                    noisy_targets.append(tgt)
+            targets = noisy_targets
+
         return {'source': ' '.join(sources),
                 'target': ' '.join(targets),
                 'task': self.name,
@@ -56,7 +72,7 @@ class AbstractTask(abc.ABC):
             n_obs = total_size
             logger.warning("n_obs is set to %s", n_obs)
         return n_obs
-   
+
     def shuffled_indices(self, dataset):
         num_samples = len(dataset)
         generator = torch.Generator()
@@ -87,9 +103,9 @@ class AbstractTask(abc.ABC):
             return indices[:validation_size]
         else:
             return indices[validation_size:]
-        
-    def map_dataset(self, dataset, add_prefix):    
-        return dataset.map(functools.partial(self.preprocessor, add_prefix=add_prefix),
+
+    def map_dataset(self, dataset, add_prefix, split):
+        return dataset.map(functools.partial(self.preprocessor, add_prefix=add_prefix, split=split),
                            remove_columns=dataset.column_names)
 
     def get(self, split, add_prefix=True, n_obs=None, split_validation_test=False):
@@ -115,7 +131,8 @@ class AbstractTask(abc.ABC):
             # shuffles the data and samples it.
             if n_obs is not None:
                 dataset = self.subsample(dataset, n_obs)
-        return self.map_dataset(dataset, add_prefix)    
+        return self.map_dataset(dataset, add_prefix, split)
+
 
 class Squad(AbstractTask):
     name = "squad"
@@ -124,14 +141,14 @@ class Squad(AbstractTask):
     def load_dataset(self, split):
         return datasets.load_dataset(self.name, split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix):
+    def preprocessor(self, example, add_prefix, split):
         answer = pad_punctuation(example['answers']['text'][0])
         question = pad_punctuation(example['question'])
         context = pad_punctuation(example['context'])
         source = ["question:", question,
                   "context:", context]
         target = [answer]
-        return self.seq2seq_format(source, target, add_prefix)
+        return self.seq2seq_format(source, target, add_prefix, split)
 
 
 class MRPC(AbstractTask):
@@ -146,11 +163,11 @@ class MRPC(AbstractTask):
     def load_dataset(self, split):
         return datasets.load_dataset('glue', 'mrpc', split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["sentence1:", example['sentence1'],
                      "sentence2:", example["sentence2"]]
         tgt_texts = [str(example['label'])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class COLA(AbstractTask):
@@ -166,10 +183,10 @@ class COLA(AbstractTask):
         return datasets.load_dataset('glue', 'cola',
                                      split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["sentence:", example['sentence']]
         tgt_texts = [str(example['label'])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class SST2(AbstractTask):
@@ -185,10 +202,10 @@ class SST2(AbstractTask):
         return datasets.load_dataset('glue', 'sst2',
                                      split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["sentence:", example['sentence']]
         tgt_texts = [str(example['label'])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class STSB(AbstractTask):
@@ -204,11 +221,11 @@ class STSB(AbstractTask):
         return datasets.load_dataset('glue', 'stsb',
                                      split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["sentence1:", example['sentence1'],
                      "sentence2:", example["sentence2"]]
         tgt_texts = [str(round_stsb_target(example['label']))]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class QQP(AbstractTask):
@@ -224,11 +241,11 @@ class QQP(AbstractTask):
         return datasets.load_dataset('glue', 'qqp',
                                      split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["question1:", example['question1'],
                      "question2:", example["question2"]]
         tgt_texts = [str(example['label'])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class MNLI(AbstractTask):
@@ -244,11 +261,11 @@ class MNLI(AbstractTask):
     def load_dataset(self, split):
         return datasets.load_dataset('glue', 'mnli', split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["premise:", example['premise'],
                      "hypothesis", example["hypothesis"]]
         tgt_texts = [str(example['label'])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class QNLI(AbstractTask):
@@ -263,11 +280,11 @@ class QNLI(AbstractTask):
     def load_dataset(self, split):
         return datasets.load_dataset('glue', 'qnli', split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["question:", example['question'],
                      "sentence:", example["sentence"]]
         tgt_texts = [str(example['label'])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 class RTE(AbstractTask):
     name = "rte"
@@ -282,11 +299,11 @@ class RTE(AbstractTask):
         return datasets.load_dataset('glue', 'rte',
                                      split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["sentence1:", example['sentence1'],
                      "sentence2:", example["sentence2"]]
         tgt_texts = [str(example['label'])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class WNLI(AbstractTask):
@@ -301,11 +318,11 @@ class WNLI(AbstractTask):
     def load_dataset(self, split):
         return datasets.load_dataset('glue', 'wnli', split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["sentence1:", example['sentence1'],
                      "sentence2:", example["sentence2"]]
         tgt_texts = [str(example['label'])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class SuperGLUEBoolQ(AbstractTask):
@@ -320,10 +337,10 @@ class SuperGLUEBoolQ(AbstractTask):
     def load_dataset(self, split):
         return datasets.load_dataset('super_glue', 'boolq', split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["question:", example["question"], "passage:", example["passage"]]
         tgt_texts = [str(example["label"])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class SuperGLUERTE(AbstractTask):
@@ -338,11 +355,11 @@ class SuperGLUERTE(AbstractTask):
     def load_dataset(self, split):
         return datasets.load_dataset('super_glue', 'rte', split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["premise:", example["premise"],
                      "hypothesis:", example["hypothesis"]]
         tgt_texts = [str(example["label"])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class SuperGLUECB(AbstractTask):
@@ -357,10 +374,10 @@ class SuperGLUECB(AbstractTask):
     def load_dataset(self, split):
         return datasets.load_dataset('super_glue', 'cb', split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["premise:", example["premise"], "hypothesis:", example["hypothesis"]]
         tgt_texts = [str(example["label"])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class SuperGLUECOPA(AbstractTask):
@@ -370,17 +387,17 @@ class SuperGLUECOPA(AbstractTask):
                            "validation": "validation",
                            "test": "validation"}
     metric = [metrics.accuracy]
-    metric_names = ["accuracy"] 
+    metric_names = ["accuracy"]
 
     def load_dataset(self, split):
         return datasets.load_dataset('super_glue', 'copa', split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
-        src_texts = ["premise:", example["premise"], 
+    def preprocessor(self, example, add_prefix=True, split="train"):
+        src_texts = ["premise:", example["premise"],
                      "choice1:", example["choice1"],
                      "choice2:", example["choice2"]]
         tgt_texts = [str(example["label"])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class SuperGLUEMultiRC(AbstractTask):
@@ -400,20 +417,20 @@ class SuperGLUEMultiRC(AbstractTask):
         """Removes the HTML markup."""
         text = re.sub('<br>', ' ', text)
         text = re.sub('<(/)?b>', '', text)
-        return text 
+        return text
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         group = example['idx']['question']
-        # T5 applies remove_markup to the joined string, but this should not make 
+        # T5 applies remove_markup to the joined string, but this should not make
         # any difference as well.
-        # https://github.com/google-research/text-to-text-transfer-transformer/blob/a1352e625db7ec114062f99d99b0565b9e45c155/t5/data/preprocessors.py#L797 
+        # https://github.com/google-research/text-to-text-transfer-transformer/blob/a1352e625db7ec114062f99d99b0565b9e45c155/t5/data/preprocessors.py#L797
         src_texts = ["question:", self.remove_markup(example["question"]),
                      "answer:", self.remove_markup(example["answer"]),
                      "paragraph:", self.remove_markup(example["paragraph"])]
         tgt_texts = [str(example["label"])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, extra_fields={"group": group})
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split, extra_fields={"group": group})
 
-   
+
 
 class SuperGLUEWIC(AbstractTask):
     name = "superglue-wic"
@@ -422,17 +439,17 @@ class SuperGLUEWIC(AbstractTask):
                            "validation": "validation",
                            "test": "validation"}
     metric = [metrics.accuracy]
-    metric_names = ["accuracy"] 
+    metric_names = ["accuracy"]
 
     def load_dataset(self, split):
         return datasets.load_dataset('super_glue', 'wic', split=split, script_version="master")
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         src_texts = ["sentence1:", example["sentence1"],
                      "sentence2:", example["sentence2"],
                      "word:", example["word"]]
         tgt_texts = [str(example["label"])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class SuperGLUEWSCFixed(AbstractTask):
@@ -463,7 +480,7 @@ class SuperGLUEWSCFixed(AbstractTask):
                            "validation": "validation",
                            "test": "validation"}
     metric = [metrics.accuracy]
-    metric_names = ["accuracy"] 
+    metric_names = ["accuracy"]
 
     def load_dataset(self, split):
         return datasets.load_dataset('super_glue', 'wsc.fixed', split=split, script_version="master")
@@ -474,7 +491,7 @@ class SuperGLUEWSCFixed(AbstractTask):
         pattern = re.sub('W', span_str, pattern)
         return re.sub(pattern, r'\1{0} \2 {0}'.format(mark), text)
 
-    def preprocessor(self, example, add_prefix=True):
+    def preprocessor(self, example, add_prefix=True, split="train"):
         # converts text as done in T5.
         text = example['text']
         text = self._mark_span(text, example['span1_text'], example['span1_index'], '*')
@@ -483,7 +500,7 @@ class SuperGLUEWSCFixed(AbstractTask):
         text = self._mark_span(text, example['span2_text'], span2_index, '#')
         src_texts = ["text:", text]
         tgt_texts = [str(example["label"])]
-        return self.seq2seq_format(src_texts, tgt_texts, add_prefix)
+        return self.seq2seq_format(src_texts, tgt_texts, add_prefix, split)
 
 
 class SuperGLUERecord(AbstractTask):
@@ -517,12 +534,12 @@ class SuperGLUERecord(AbstractTask):
                            "validation": "validation",
                            "test": "validation"}
     metric = [metrics.squad]
-    metric_names = ["squad"] 
-    
+    metric_names = ["squad"]
+
     def load_dataset(self, split):
         return datasets.load_dataset('super_glue', 'record', split=split, script_version="master")
 
-    def preprocessor(self, batch, add_prefix=True):
+    def preprocessor(self, batch, add_prefix=True, split="train"):
         new_batch = collections.defaultdict(list)
         keys = batch.keys()
         for values in zip(*batch.values()):
@@ -533,18 +550,18 @@ class SuperGLUERecord(AbstractTask):
             passage = re.sub(r'\n@highlight\n', '. ', passage)
             inputs = f"record query: {ex['query']} entities: {', '.join(ex['entities'])} passage: {passage}"
             if add_prefix:
-                inputs = self.name + " " + inputs 
+                inputs = self.name + " " + inputs
             # duplicates the samples based on  number of answers.
             num_answers = len(ex["answers"])
             num_duplicates = np.maximum(1, num_answers)
-            new_batch["source"].extend([inputs] * num_duplicates) 
+            new_batch["source"].extend([inputs] * num_duplicates)
             new_batch["target"].extend(ex["answers"] if num_answers > 0 else ["<unk>"])
             new_batch["task"].extend([self.name] * num_duplicates)
-            new_batch["extra_fields"].extend([{"answers": ex["answers"]}]*num_duplicates) 
+            new_batch["extra_fields"].extend([{"answers": ex["answers"]}]*num_duplicates)
         return new_batch
-    
-    def map_dataset(self, dataset, add_prefix=True):
-        return dataset.map(functools.partial(self.preprocessor, add_prefix=add_prefix), 
+
+    def map_dataset(self, dataset, add_prefix=True, split="train"):
+        return dataset.map(functools.partial(self.preprocessor, add_prefix=add_prefix, split=split),
             batched=True, remove_columns=dataset.column_names)
 
 
@@ -573,9 +590,9 @@ TASK_MAPPING = OrderedDict(
 
 class AutoTask:
     @classmethod
-    def get(self, task, config, seed=42):
+    def get(self, task, config, seed=42, noise_frac=0.0):
         if task in TASK_MAPPING:
-            return TASK_MAPPING[task](config, seed)
+            return TASK_MAPPING[task](config, seed, noise_frac)
         raise ValueError(
             "Unrecognized task {} for AutoTask Model: {}.\n"
             "Task name should be one of {}.".format(

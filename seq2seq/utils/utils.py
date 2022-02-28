@@ -1,4 +1,4 @@
-import os 
+import os
 import regex as re
 import logging
 from dataclasses import fields
@@ -6,7 +6,7 @@ import torch.nn as nn
 import json
 
 from seq2seq.adapters import (AutoAdapterConfig, AdapterController, Adapter, HyperComplexAdapter)
-from projections.intrinsic import intrinsic_dimension, intrinsic_dimension_said
+#from projections.intrinsic import intrinsic_dimension, intrinsic_dimension_said
 from seq2seq.third_party.models.t5 import T5LayerNorm
 
 logger = logging.getLogger(__name__)
@@ -25,12 +25,12 @@ def create_dir(output_dir):
 
 
 def get_adapter_config(adapter_args, data_args, training_args, config):
-    if adapter_args.train_task_adapters or adapter_args.prefix_tuning or adapter_args.bitfit:
+    if adapter_args.train_task_adapters or adapter_args.prefix_tuning or adapter_args.bitfit or adapter_args.train_distributor:
         adapter_config = AutoAdapterConfig.get(adapter_args.adapter_config_name)
         adapter_config.input_dim = config.d_model
 
         if adapter_args.train_task_adapters:
-            data_args.tasks = [data_args.task_name] 
+            data_args.tasks = [data_args.task_name]
             adapter_config.tasks = data_args.tasks
         adapter_params = [field.name for field in fields(adapter_args)]
         for p in adapter_params:
@@ -81,7 +81,7 @@ def freeze_model_params(model, adapter_args):
                model.phm_rule_right.requires_grad = True
             else:
                model.phm_rule.requires_grad = True
-                 
+
         if adapter_args.hypercomplex_adapters and adapter_args.shared_W_phm:
             if adapter_args.factorized_phm:
                model.W_down_left.requires_grad = True
@@ -105,18 +105,41 @@ def freeze_model_params(model, adapter_args):
                     for param_name, param in sub_module.named_parameters():
                         param.requires_grad = True
 
-    if adapter_args.prefix_tuning:           
+    if adapter_args.prefix_tuning:
         freeze_params(model)
         for n, m in model.named_parameters():
             if "prefix_shared" == n:
-               m.requires_grad = True 
+               m.requires_grad = True
+
+    if adapter_args.train_distributor:
+        freeze_params(model)
+        for n, m in model.named_parameters():
+            if "hook" in n or "layer_norm.bias" in n:
+               m.requires_grad = True
+
+        # unfreeze the classifier.
+        for param in model.lm_head.parameters():
+            param.requires_grad = True
+        if adapter_args.freeze_bitfit_lm_head:
+           for n, param in model.lm_head.named_parameters():
+                if "bias" in n:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
+        if adapter_args.freeze_bitfit_lm_head_all:
+           for n, param in model.lm_head.named_parameters():
+                param.requires_grad = False
+        '''for n, m in model.named_modules():
+            if "distributor" in n:
+                m.requires_grad = True'''
 
     # For bitfit we freeze the whole model except for the biases and the final classifier layer.
-    if adapter_args.bitfit: 
+    if adapter_args.bitfit:
         freeze_params(model)
         # unfreeze bias terms.
         for n,p in model.named_parameters():
-          if ".bias" in n:
+          #if ".bias" in n:
+          if ".bias" in n or "layer_norm.weight" in n:
             p.requires_grad = True
 
         # unfreeze the classifier.
@@ -143,7 +166,7 @@ def get_adapter_params_names(model):
         if isinstance(sub_module, (AdapterController, Adapter)):
            for param_name, param in sub_module.named_parameters():
                params_names.append(name+"."+param_name)
-    return params_names      
+    return params_names
 
 
 def get_layer_norm_params_names(model):
@@ -167,7 +190,7 @@ def get_last_checkpoint(output_dir):
 
 def pad_punctuation(text):
    """Re-implementation of _pad_punctuation in t5. This function adds spaces
-   around punctuation. While this pads punctuation as expected, it has the 
+   around punctuation. While this pads punctuation as expected, it has the
    unexpected effected of padding certain unicode characters with accents, with
    spaces as well. For instance: "François" becomes "Fran ç ois"""
    # Pad everything except for: underscores (_), whitespace (\s),
@@ -182,12 +205,13 @@ def modify_model_after_init(model, training_args, adapter_args):
     # Freezes model parameters.
     freeze_model_params(model, adapter_args)
     if adapter_args.intrinsic_model:
-        if adapter_args.intrinsic_said:
+        '''if adapter_args.intrinsic_said:
            model = intrinsic_dimension_said(model, adapter_args.intrinsic_dim,\
                training_args.output_dir, set(), adapter_args.intrinsic_projection, "cpu")
         else:
            model = intrinsic_dimension(model, adapter_args.intrinsic_dim,\
-               training_args.output_dir, set(), adapter_args.intrinsic_projection, "cpu")
+               training_args.output_dir, set(), adapter_args.intrinsic_projection, "cpu")'''
+        raise NotImplementedError
 
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
