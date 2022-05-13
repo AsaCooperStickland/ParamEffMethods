@@ -27,6 +27,13 @@ class AdapterConfig(object):
     # This can be either random, or fastfood.
     intrinsic_projection = "random"
 
+    lora = False
+    parallel = False
+    batchensemble = False
+    lora_bias = False
+    down_scale = 512
+    up_scale = 128
+
     # Hypercomplex adapters parameters
     hypercomplex_adapters = False
     hypercomplex_division = 8

@@ -18,9 +18,9 @@ Fine-tuning the library models for sequence to sequence.
 # You can also adapt this script on your own sequence to sequence task. Pointers for this are left as comments.
 import functools
 import logging
-import torch 
+import torch
 import os
-os.environ['MKL_THREADING_LAYER'] = 'GNU' 
+os.environ['MKL_THREADING_LAYER'] = 'GNU'
 os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
 import sys
 import subprocess
@@ -41,9 +41,9 @@ from seq2seq.data import AutoTask
 from seq2seq.data import TaskDataCollatorForSeq2Seq
 from seq2seq.third_party.trainers import Seq2SeqTrainer
 from training_args import AdapterTrainingArguments
-from seq2seq.utils import modify_model_after_init, save_training_config 
+from seq2seq.utils import modify_model_after_init, save_training_config
 from dataclasses import dataclass, field
-from transformers import Seq2SeqTrainingArguments 
+from transformers import Seq2SeqTrainingArguments
 from seq2seq.third_party.models import T5Config, T5ForConditionalGeneration
 from seq2seq.data import AutoPostProcessor
 
@@ -92,6 +92,10 @@ class TrainingArguments(Seq2SeqTrainingArguments):
     compute_time: Optional[bool] = field(default=False, metadata={"help": "If set measures the time."})
     compute_memory: Optional[bool] = field(default=False, metadata={"help": "if set, measures the memory"})
     prefix_length: Optional[int] = field(default=100, metadata={"help": "Defines the length for prefix tuning."})
+    scale_value: Optional[int] = field(default=-1, metadata={"help": "Defines the length for prefix tuning."})
+    sam: Optional[bool] = field(default=False, metadata={"help": "If set measures the time."})
+    sam_rho: Optional[float] = field(default=0.05, metadata={"help": "If set measures the time."})
+    sam_adaptive: Optional[bool] = field(default=False, metadata={"help": "If set measures the time."})
 
 @dataclass
 class ModelArguments:
@@ -228,6 +232,7 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "Defines a dictionary from task adapters to the tasks."}
     )
+    noise_frac: Optional[float] = field(default=0.0, metadata={"help": "defines the phm init range."})
     task_embeddings: Optional[List[str]] = field(
         default=None,
         metadata={"help": "Defines a dictionary from tasks to the tasks embeddings."}
@@ -267,7 +272,7 @@ def main():
                 "Use --overwrite_output_dir to overcome."
             )
             '''
-            pass 
+            pass
         elif last_checkpoint is not None:
             logger.info(
                 f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
@@ -323,6 +328,7 @@ def main():
     )
     config.train_task_adapters = adapter_args.train_task_adapters
     config.prefix_tuning = adapter_args.prefix_tuning
+    config.scale_value = training_args.scale_value
     adapter_config = get_adapter_config(adapter_args, data_args, training_args, config)
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
@@ -358,7 +364,7 @@ def main():
     # Temporarily set max_target_length for training.
     #max_target_length = data_args.max_target_length
     padding = "max_length" if data_args.pad_to_max_length else False
-    
+
     def preprocess_function(examples, max_target_length):
         model_inputs = tokenizer(examples['source'], max_length=data_args.max_source_length,
                                  padding=padding, truncation=True)
@@ -380,8 +386,8 @@ def main():
     if training_args.do_train:
         train_datasets = [AutoTask.get(dataset_name,
                                        dataset_config_name,
-                                       seed=data_args.data_seed).get(
-            split="train", 
+                                       seed=data_args.data_seed, noise_frac=data_args.noise_frac).get(
+            split="train",
             split_validation_test=training_args.split_validation_test,
             add_prefix=False if adapter_args.train_task_adapters else True,
             n_obs=data_args.max_train_samples)
@@ -399,11 +405,11 @@ def main():
                 load_from_cache_file=not data_args.overwrite_cache,
             )
         train_dataset = concatenate_datasets(train_datasets)
-   
+
     if training_args.do_eval:
         eval_datasets = {eval_dataset: AutoTask.get(eval_dataset, eval_dataset_config,
             seed=data_args.data_seed).get(
-            split="validation", 
+            split="validation",
             split_validation_test=training_args.split_validation_test,
             add_prefix=False if adapter_args.train_task_adapters else True,
             n_obs=data_args.max_val_samples)
@@ -423,7 +429,7 @@ def main():
     if training_args.do_test:
         test_datasets = {test_dataset: AutoTask.get(test_dataset, test_dataset_config,
             seed=data_args.data_seed).get(
-            split="test", 
+            split="test",
             split_validation_test=training_args.split_validation_test,
             add_prefix=False if adapter_args.train_task_adapters else True,
             n_obs=data_args.max_test_samples)
@@ -457,10 +463,10 @@ def main():
 
     # Extracts the extra information needed to evaluate on each dataset.
     # These information are only used in the compute_metrics.
-    # We will assume that the test/eval dataloader does not change the order of 
+    # We will assume that the test/eval dataloader does not change the order of
     # the data.
     data_info = {"eval": eval_datasets[data_args.eval_dataset_name[0]]['extra_fields'],
-                 "test": test_datasets[data_args.test_dataset_name[0]]['extra_fields'], 
+                 "test": test_datasets[data_args.test_dataset_name[0]]['extra_fields'],
                  "train": train_dataset['extra_fields']}
     def compute_metrics(eval_preds):
         preds, labels, data_info = eval_preds
@@ -484,11 +490,13 @@ def main():
         compute_metrics=compute_metrics if training_args.predict_with_generate else None,
         evaluation_metrics = TASK_TO_METRICS[data_args.dataset_name[0]]
     )
-    # Saves training config. 
+    # Saves training config.
     if trainer.is_world_process_zero():
        os.makedirs(training_args.output_dir, exist_ok=True)
-       save_training_config(sys.argv[1], training_args.output_dir)
+       if sys.argv[1].endswith(".json"):
+           save_training_config(sys.argv[1], training_args.output_dir)
 
+    print(model)
     # Training
     if training_args.do_train:
         checkpoint = None
@@ -502,15 +510,15 @@ def main():
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)
             start.record()
-        
+
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
-        
+
         if training_args.compute_time:
             end.record()
             torch.cuda.synchronize()  # wait for all_reduce to complete
             total_time = start.elapsed_time(end)/(1000*60)
             performance_metrics.update({"total_time in minutes ": total_time})
-        
+
         trainer.save_model()  # Saves the tokenizer too for easy upload
         train_metrics = train_result.metrics
         max_train_samples = (
@@ -532,7 +540,7 @@ def main():
     if training_args.compute_memory or training_args.compute_time:
         print(performance_metrics)
         trainer.save_metrics("performance", performance_metrics)
-    
+
     # Evaluation
     results = {}
     if training_args.do_eval:

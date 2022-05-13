@@ -1,6 +1,7 @@
 """Implements Adapter Controller, a module that keeps multiple
 layers of Adapters, and controls which adapter layer to use."""
 import os
+import re
 import torch.nn as nn
 from .adapter_modeling import Adapter, HyperComplexAdapter, LowRankAdapter
 
@@ -29,7 +30,7 @@ class AdapterController(nn.Module):
             self.post_layer_norm = nn.LayerNorm(config.input_dim)
 
     def get_task(self, task):
-        return task 
+        return task
 
     def construct_adapters(self, tasks):
         """
@@ -39,6 +40,7 @@ class AdapterController(nn.Module):
             tasks: A list of string containing the task names.
         """
         for task in tasks:
+            task = re.sub("[.]", "", task)
             if self.hypercomplex_adapters:
                 self.adapters[task] = HyperComplexAdapter(self.config)
             elif self.low_rank_adapters:
@@ -102,12 +104,13 @@ class AdapterController(nn.Module):
             outputs of the adapter layer.
         """
         task = self.get_task(task)
+        task_ = re.sub("[.]", "", task)
         # Enables the adapter layer for the given task.
-        self.enable_adapters(task)
+        self.enable_adapters(task_)
         # Disable other adapters.
         other_tasks = [x for x in self.tasks if x != task]
         self.disable_adapters(other_tasks)
-        adapter = self.get_adapter(task)
+        adapter = self.get_adapter(task_)
         z = self.pre_layer_norm(inputs) if self.add_layer_norm_before_adapter else inputs
         outputs = adapter(z)
         if self.add_layer_norm_after_adapter:

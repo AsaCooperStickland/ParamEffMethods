@@ -238,8 +238,8 @@ class T5LayerNorm(nn.Module):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
-        #self.bitfit = ("layer_norm" in adapter_config.layer_list or adapter_config.bitfit) if adapter_config is not None else False
-        self.bitfit = ("layer_norm" in adapter_config.layer_list) if adapter_config is not None else False
+        self.bitfit = ("layer_norm" in adapter_config.layer_list or adapter_config.bitfit) if adapter_config is not None else False
+        #self.bitfit = ("layer_norm" in adapter_config.layer_list) if adapter_config is not None else False
         if self.bitfit:
            self.bias = nn.Parameter(torch.zeros(hidden_size))
 
@@ -342,6 +342,7 @@ class T5Attention(nn.Module):
         self.relative_attention_num_buckets = config.relative_attention_num_buckets
         self.d_model = config.d_model
         self.key_value_proj_dim = config.d_kv
+        self.scale_value = int(config.scale_value)
         self.n_heads = config.num_heads
         self.dropout = config.dropout_rate
         self.inner_dim = self.n_heads * self.key_value_proj_dim
@@ -552,7 +553,10 @@ class T5Attention(nn.Module):
         if layer_head_mask is not None:
             attn_weights = attn_weights * layer_head_mask
 
-        attn_output = unshape(torch.matmul(attn_weights, value_states))  # (batch_size, seq_length, dim)
+        if self.scale_value == -1:
+            attn_output = unshape(torch.matmul(attn_weights, value_states))  # (batch_size, seq_length, dim)
+        else:
+            attn_output = (self.scale_value / self.key_value_proj_dim) * unshape(torch.matmul(attn_weights, value_states))  # (batch_size, seq_length, dim)
         if self.train_distributor:
             attn_output = self.distributor(attn_output, f"b4_o_{attention_type}", condition=condition)
         attn_output = self.o(attn_output)
@@ -1575,6 +1579,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
 
         self.bitfit = adapter_config.bitfit if adapter_config is not None else False
         self.train_distributor = adapter_config.train_distributor if adapter_config is not None else False
+        self.lora = adapter_config.lora if adapter_config is not None else False
         self.supports_gradient_checkpointing = True
         self.lm_head = nn.Linear(config.d_model, config.vocab_size,
                                  bias=False if not (self.bitfit or self.train_distributor) else True)

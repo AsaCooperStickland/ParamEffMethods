@@ -39,17 +39,22 @@ class Adapter(nn.Module):
         self.config = config
         self.input_dim = config.input_dim
         self.down_sample_size = config.adapter_size
+        self.down_scale = config.down_scale
+        self.up_scale = config.up_scale
         self.activation = Activations(config.non_linearity.lower())
         if "glu" in config.non_linearity.lower():
-            self.down_sampler = nn.Linear(self.input_dim, self.down_sample_size * 2)
+            self.down_sampler = nn.Linear(self.input_dim, self.down_sample_size * 2, bias=False)
         else:
-            self.down_sampler = nn.Linear(self.input_dim, self.down_sample_size)
-        self.up_sampler = nn.Linear(self.down_sample_size, self.input_dim)
+            self.down_sampler = nn.Linear(self.input_dim, self.down_sample_size, bias=False)
+        self.down_bias = nn.Parameter(torch.zeros(self.down_sample_size))
+        self.up_sampler = nn.Linear(self.down_sample_size, self.input_dim, bias=False)
+        self.up_bias = nn.Parameter(torch.zeros(self.input_dim))
+        #nn.init.zeros_(self.up_sampler.weight)
 
     def forward(self, x):
-        z = self.down_sampler(x)
+        z = (self.down_scale / self.input_dim) * self.down_sampler(x) + self.down_bias
         z = self.activation(z)
-        output = self.up_sampler(z)
+        output = (self.up_scale / self.down_sample_size) * self.up_sampler(z) + self.up_bias
         return output
 
 
