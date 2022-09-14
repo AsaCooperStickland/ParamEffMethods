@@ -1,5 +1,5 @@
 # COMPACTER: Efficient Low-Rank Hypercomplex Adapter Layers
-This repo contains the pytorch implementation of our draft [COMPACTER: Efficient Low-Rank Hypercomplex Adapter Layers](https://www.idiap.ch/~rkarimi/papers/compact_adapters.pdf).
+This repo builds on the pytorch implementation of [COMPACTER: Efficient Low-Rank Hypercomplex Adapter Layers](https://www.idiap.ch/~rkarimi/papers/compact_adapters.pdf), adding support for flat minima ethods (i.e. Sharpness Aware Minimization) and [LoRA](https://arxiv.org/abs/2106.09685).
 This repo additionally contains the implementation for the recent parameter-efficient finetuning methods as well.
 
 # Installation
